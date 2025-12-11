@@ -58,10 +58,16 @@ async function run() {
 
         // save a contest data in db
         app.post('/contests', async (req, res) => {
-            const contestsData = req.body;
-            // console.log(contestsData);
-            const result = await contestsCollection.insertOne(contestsData);
+            const contestData = req.body;
+            // console.log(contestData);
+            const result = await contestsCollection.insertOne(contestData);
             res.send(result);
+        })
+
+        // get all contest from db
+        app.get('/contests', async (req, res) => {
+            const result = await contestsCollection.find().toArray()
+            res.send(result)
         })
 
 
