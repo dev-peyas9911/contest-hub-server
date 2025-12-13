@@ -1,7 +1,7 @@
 require('dotenv').config()
 const express = require('express')
 const cors = require('cors')
-const { MongoClient, ServerApiVersion } = require('mongodb')
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb')
 const admin = require('firebase-admin')
 const port = process.env.PORT || 3000
 const decoded = Buffer.from(process.env.FB_SERVICE_KEY, 'base64').toString(
@@ -67,6 +67,13 @@ async function run() {
         // get all contest from db
         app.get('/contests', async (req, res) => {
             const result = await contestsCollection.find().toArray()
+            res.send(result)
+        })
+
+        // get one contest from db
+        app.get('/contests/:id', async (req, res) => {
+            const id = req.params.id
+            const result = await contestsCollection.findOne({ _id: new ObjectId(id) })
             res.send(result)
         })
 
