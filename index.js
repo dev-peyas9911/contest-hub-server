@@ -66,9 +66,30 @@ async function run() {
 
         // get all contest from db
         app.get('/contests', async (req, res) => {
-            const result = await contestsCollection.find().toArray()
+            // search starts here
+            const { search } = req.query;
+            let query = {};
+            if (search) {
+                query = {
+                    contestType: { $regex: search, $options: "i" }
+                };
+            }
+            // search ends here
+
+            const result = await contestsCollection.find(query).toArray()
             res.send(result)
         })
+
+        // get 6 contests for popular section
+        app.get("/contests/popular", async (req, res) => {
+            const result = await contestsCollection
+                .find()
+                .sort({ participants: -1 }) // highest first
+                .limit(6)
+                .toArray();
+
+            res.send(result);
+        });
 
         // get one contest from db
         app.get('/contests/:id', async (req, res) => {
