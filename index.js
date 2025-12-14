@@ -3,6 +3,7 @@ const express = require('express')
 const cors = require('cors')
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb')
 const admin = require('firebase-admin')
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
 const port = process.env.PORT || 3000
 const decoded = Buffer.from(process.env.FB_SERVICE_KEY, 'base64').toString(
     'utf-8'
@@ -16,9 +17,7 @@ const app = express()
 // middleware
 app.use(
     cors({
-        origin: [
-            'http://localhost:5173'
-        ],
+        origin: [process.env.CLIENT_DOMAIN],
         credentials: true,
         optionSuccessStatus: 200,
     })
@@ -54,6 +53,7 @@ async function run() {
 
         const db = client.db('contestsDB');
         const contestsCollection = db.collection('contests')
+        const participatesCollection = db.collection('participates')
 
 
         // save a contest data in db
@@ -76,6 +76,113 @@ async function run() {
             const result = await contestsCollection.findOne({ _id: new ObjectId(id) })
             res.send(result)
         })
+
+        // Payment endpoints
+        app.post('/create-checkout-session', async (req, res) => {
+            const paymentInfo = req.body
+            // console.log(paymentInfo)
+            const session = await stripe.checkout.sessions.create({
+                line_items: [
+                    {
+                        price_data: {
+                            currency: 'usd',
+                            product_data: {
+                                name: paymentInfo?.name,
+                                description: paymentInfo?.description,
+                                images: [paymentInfo.image],
+                            },
+                            unit_amount: paymentInfo?.price * 100,
+                        },
+                        quantity: paymentInfo?.quantity,
+                    },
+                ],
+                customer_email: paymentInfo?.customer?.email,
+                mode: 'payment',
+                metadata: {
+                    contestId: paymentInfo?.contestId,
+                    customer: paymentInfo?.customer.email,
+                },
+                success_url: `${process.env.CLIENT_DOMAIN}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+                cancel_url: `${process.env.CLIENT_DOMAIN}/contest/${paymentInfo?.contestId}`,
+            })
+            res.send({ url: session.url })
+        })
+
+        // save in db after payment
+        app.post('/payment-success', async (req, res) => {
+            const { sessionId } = req.body
+            const session = await stripe.checkout.sessions.retrieve(sessionId)
+            const contest = await contestsCollection.findOne({
+                _id: new ObjectId(session.metadata.contestId),
+            })
+            const order = await participatesCollection.findOne({
+                transactionId: session.payment_intent,
+            })
+
+            if (session.status === 'complete' && contest && !order) {
+                // save order data in db
+                const orderInfo = {
+                    contestId: session.metadata.contestId,
+                    transactionId: session.payment_intent,
+                    customer: session.metadata.customer,
+                    status: 'paid',
+                    creator: contest.creator,
+                    name: contest.name,
+                    contestType: contest.contestType,
+                    quantity: 1,
+                    price: session.amount_total / 100,
+                    image: contest?.image,
+                }
+                const result = await participatesCollection.insertOne(orderInfo)
+                // update plant quantity
+                await contestsCollection.updateOne(
+                    {
+                        _id: new ObjectId(session.metadata.contestId),
+                    },
+                    { $inc: { participants: 1 } }
+                )
+
+                return res.send({
+                    transactionId: session.payment_intent,
+                    orderId: result.insertedId,
+                })
+            }
+            res.send(
+                res.send({
+                    transactionId: session.payment_intent,
+                    orderId: order._id,
+                })
+            )
+        })
+
+        // get all orders for a customer by email
+        app.get('/my-participates/:email', async (req, res) => {
+            const email = req.params.email
+
+            const result = await participatesCollection.find({ customer: email }).toArray()
+            res.send(result)
+        })
+
+        // get all orders for a seller by email
+        app.get('/manage-orders/:email', async (req, res) => {
+            const email = req.params.email
+
+            const result = await participatesCollection
+                .find({ 'seller.email': email })
+                .toArray()
+            res.send(result)
+        })
+
+        // get all contests for a creator by email
+        app.get('/created-contests/:email', async (req, res) => {
+            const email = req.params.email
+
+            const result = await contestsCollection
+                .find({ 'creator.email': email })
+                .toArray()
+            res.send(result)
+        })
+
 
 
         // Send a ping to confirm a successful connection
