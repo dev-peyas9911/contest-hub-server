@@ -56,6 +56,28 @@ async function run() {
         const participatesCollection = db.collection('participates')
         const usersCollection = db.collection('users')
 
+        // role middlewares
+        const verifyADMIN = async (req, res, next) => {
+            const email = req.tokenEmail
+            const user = await usersCollection.findOne({ email })
+            if (user?.role !== 'admin')
+                return res
+                    .status(403)
+                    .send({ message: 'Admin only Actions!', role: user?.role })
+
+            next()
+        }
+        const verifyCREATOR = async (req, res, next) => {
+            const email = req.tokenEmail
+            const user = await usersCollection.findOne({ email })
+            if (user?.role !== 'creator')
+                return res
+                    .status(403)
+                    .send({ message: 'Creator only Actions!', role: user?.role })
+
+            next()
+        }
+
 
         // save a contest data in db
         app.post('/contests', async (req, res) => {
@@ -178,15 +200,15 @@ async function run() {
         })
 
         // get all orders for a customer by email
-        app.get('/my-participates/:email', async (req, res) => {
-            const email = req.params.email
+        app.get('/my-participates', verifyJWT, async (req, res) => {
+            // const email = req.params.email
 
-            const result = await participatesCollection.find({ customer: email }).toArray()
+            const result = await participatesCollection.find({ customer: req.tokenEmail }).toArray()
             res.send(result)
         })
 
         // get all orders for a seller by email
-        app.get('/manage-orders/:email', async (req, res) => {
+        app.get('/manage-orders/:email', verifyJWT, async (req, res) => {
             const email = req.params.email
 
             const result = await participatesCollection
@@ -217,10 +239,10 @@ async function run() {
             }
 
             const alreadyExists = await usersCollection.findOne(query)
-            console.log('User Already Exists---> ', !!alreadyExists)
+            // console.log('User Already Exists---> ', !!alreadyExists)
 
             if (alreadyExists) {
-                console.log('Updating user info......')
+                // console.log('Updating user info......')
                 const result = await usersCollection.updateOne(query, {
                     $set: {
                         last_loggedIn: new Date().toISOString(),
@@ -229,7 +251,7 @@ async function run() {
                 return res.send(result)
             }
 
-            console.log('Saving new user info......')
+            // console.log('Saving new user info......')
             const result = await usersCollection.insertOne(userData)
             res.send(result)
         })
@@ -238,6 +260,27 @@ async function run() {
         app.get('/user/role', verifyJWT, async (req, res) => {
             const result = await usersCollection.findOne({ email: req.tokenEmail })
             res.send({ role: result?.role })
+        })
+
+        // get all users for admin
+        app.get('/users', verifyJWT, verifyADMIN, async (req, res) => {
+            const adminEmail = req.tokenEmail
+            const result = await usersCollection
+                .find({ email: { $ne: adminEmail } })
+                .toArray()
+            res.send(result)
+        })
+
+        // update a user's role
+        app.patch('/update-role', verifyJWT, verifyADMIN, async (req, res) => {
+            const { email, role } = req.body
+            const result = await usersCollection.updateOne(
+                { email },
+                { $set: { role } }
+            )
+            // await sellerRequestsCollection.deleteOne({ email })
+
+            res.send(result)
         })
 
 
