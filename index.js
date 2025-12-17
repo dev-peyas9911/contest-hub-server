@@ -55,6 +55,8 @@ async function run() {
         const contestsCollection = db.collection('contests')
         const participatesCollection = db.collection('participates')
         const usersCollection = db.collection('users')
+        // with AI
+        const contestRequestsCollection = db.collection('contestRequests');
 
         // role middlewares
         const verifyADMIN = async (req, res, next) => {
@@ -282,6 +284,88 @@ async function run() {
 
             res.send(result)
         })
+
+        // with AI
+        // Post request for creator
+        app.post(
+            '/contest-requests',
+            // verifyJWT,
+            // verifyCREATOR,
+            async (req, res) => {
+                const contestData = req.body;
+
+                contestData.status = 'pending';
+                contestData.createdAt = new Date().toISOString();
+
+                const result = await contestRequestsCollection.insertOne(contestData);
+                res.send(result);
+            }
+        );
+
+        // get all request for admin
+        app.get(
+            '/contest-requests',
+            // verifyJWT,
+            // verifyADMIN,
+            async (req, res) => {
+                const result = await contestRequestsCollection.find().toArray();
+                res.send(result);
+            }
+        );
+
+        // Admin aprove request
+        app.patch(
+            '/contest-requests/approve/:id',
+            // verifyJWT,
+            // verifyADMIN,
+            async (req, res) => {
+                const id = req.params.id;
+
+                const contest = await contestRequestsCollection.findOne({
+                    _id: new ObjectId(id),
+                });
+
+                if (!contest) {
+                    return res.status(404).send({ message: 'Request not found' });
+                }
+
+                // Prepare contest for live collection
+                const approvedContest = {
+                    ...contest,
+                    participants: 0,
+                    approvedAt: new Date().toISOString(),
+                };
+
+                delete approvedContest._id;
+                delete approvedContest.status;
+
+                // Insert into contests
+                await contestsCollection.insertOne(approvedContest);
+
+                // Remove from requests
+                await contestRequestsCollection.deleteOne({
+                    _id: new ObjectId(id),
+                });
+
+                res.send({ message: 'Contest approved & published' });
+            }
+        );
+
+        // admin can delete contest
+        app.delete(
+            '/contest-requests/:id',
+            // verifyJWT,
+            // verifyADMIN,
+            async (req, res) => {
+                const id = req.params.id;
+
+                await contestRequestsCollection.deleteOne({
+                    _id: new ObjectId(id),
+                });
+
+                res.send({ message: 'Contest request rejected' });
+            }
+        );
 
 
 
