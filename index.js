@@ -191,12 +191,12 @@ async function run() {
                     orderId: result.insertedId,
                 })
             }
-            res.send(
-                res.send({
-                    transactionId: session.payment_intent,
-                    orderId: order._id,
-                })
-            )
+            return
+            res.send({
+                transactionId: session.payment_intent,
+                orderId: order._id,
+            })
+
         })
 
         // get all orders for a customer by email
