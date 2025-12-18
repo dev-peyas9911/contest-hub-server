@@ -57,6 +57,7 @@ async function run() {
         const usersCollection = db.collection('users')
         // with AI
         const contestRequestsCollection = db.collection('contestRequests');
+        const submissionsCollection = db.collection("submissions");
 
         // role middlewares
         const verifyADMIN = async (req, res, next) => {
@@ -122,6 +123,19 @@ async function run() {
             const result = await contestsCollection.findOne({ _id: new ObjectId(id) })
             res.send(result)
         })
+
+        // update contest
+        app.patch('/contests/:id', async (req, res) => {
+            const id = req.params.id;
+            const updatedData = req.body;
+
+            const result = await contestsCollection.updateOne(
+                { _id: new ObjectId(id) },
+                { $set: updatedData }
+            );
+
+            res.send(result);
+        });
 
         // Payment endpoints
         app.post('/create-checkout-session', async (req, res) => {
@@ -366,6 +380,64 @@ async function run() {
                 res.send({ message: 'Contest request rejected' });
             }
         );
+
+        // update user profile
+        app.patch('/user/profile', async (req, res) => {
+            const email = req.tokenEmail;
+            const { name, image, bio } = req.body;
+
+            const result = await usersCollection.updateOne(
+                { email },
+                {
+                    $set: {
+                        name,
+                        image,
+                        bio,
+                        updated_at: new Date().toISOString(),
+                    },
+                }
+            );
+
+            res.send(result);
+        });
+
+        // submit task
+        app.post("/submit-task", async (req, res) => {
+            const { contestId, submission } = req.body;
+            const email = req.tokenEmail;
+
+            const alreadySubmitted = await submissionsCollection.findOne({
+                contestId,
+                email,
+            });
+
+            if (alreadySubmitted) {
+                return res.status(400).send({ message: "Task already submitted" });
+            }
+
+            const doc = {
+                contestId,
+                email,
+                submission,
+                createdAt: new Date().toISOString(),
+            };
+
+            const result = await submissionsCollection.insertOne(doc);
+            res.send(result);
+        });
+
+        // Already registered
+        app.get("/is-registered/:contestId", async (req, res) => {
+            const contestId = req.params.contestId;
+            const email = req.tokenEmail;
+
+            const registered = await participatesCollection.findOne({
+                contestId,
+                customer: email,
+            });
+
+            res.send({ registered: !!registered });
+        });
 
 
 
